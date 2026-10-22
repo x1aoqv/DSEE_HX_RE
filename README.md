@@ -21,7 +21,6 @@ config/         SetConfiguration rules (C) / SetConfiguration 规则（C）
 decoder/        ffmpeg → stereo s32le / 解码为立体声 s32le
 kern/           DSP (open → heq → frame → dsx → ext80) / DSP 内核
 build.bat       build/dsee_kern.dll / 编译 DLL
-dataflow.html   signal-flow notes / 信号流说明（浏览器打开）
 ```
 
 ---
