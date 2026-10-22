@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build artifacts
+build/*.dll
+build/*.exp
+build/*.lib
+build/*.a
+build/*.o
+*.o
+
+# Temp / scratch
+*.s32le
+*.wav
+.DS_Store
+Thumbs.db
+*.log
+cap/
+tmp/
+temp/
+
+# IDE
+.idea/
+.vscode/
+*.user
