@@ -340,8 +340,11 @@ static int decide(const int *st, int f76_init, DseeCfg *cfg)
     cfg->channels = st[0];
     cfg->nch_gate = st[7];
     cfg->active = (f80 || f76) ? 1 : 0;
-    cfg->rs_in = step_src * (512 / step_dst);
-    cfg->rs_out = 512;
+    /* MC Transform calls 6C80 with (rs_in, rs_out) == (step_src, step_dst).
+       Old formula forced rs_out=512 and inflated rs_in on 2x (e.g. 44100→88200
+       became 256/512 instead of 128/256), which scrambled stateful DSX output. */
+    cfg->rs_in = step_src;
+    cfg->rs_out = step_dst;
     return 0;
 }
 

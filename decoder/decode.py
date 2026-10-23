@@ -8,7 +8,10 @@ from ffmpeg_bin import ffmpeg as find_ffmpeg
 
 def decode_pcm(src: Path, rate: int) -> Path:
 
-    out = Path(tempfile.mkstemp(prefix="dsee_", suffix=".s32le")[1])
+    fd, name = tempfile.mkstemp(prefix="dsee_", suffix=".s32le")
+    import os
+    os.close(fd)
+    out = Path(name)
     ff = find_ffmpeg()
     p = subprocess.run(
         [str(ff), "-v", "error", "-y", "-i", str(src), "-map", "0:a:0",
