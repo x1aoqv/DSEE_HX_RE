@@ -22,6 +22,8 @@ EXPORT int dsee_fill_source(const DseeMediaFacts *facts, int output_fs,
         return 3;
 
     codec = config_map_codec(facts->codec_name);
+    if (codec < 0)
+        return 4; /* OpenMG id not in COmgDseeHxHelper allow-list / remap */
     config_abr_vbr(facts->codec_name, facts->bit_rate, facts->path_has_cbr, &abr,
                    &vbr);
     config_default_overrides(&sb, &head, &dcr, &gain, &offset);

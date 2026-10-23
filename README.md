@@ -93,9 +93,9 @@ python cli.py track.flac out.wav 176400 24
 3. **kern**: `dsee_open_source` → HEQ → DSX (mem+76 / mem+80) → quant-style out → WAV  
    **kern**：`dsee_open_source` → HEQ → DSX（mem+76 / mem+80）→ 量化风格出口 → WAV
 
-`codec_map` only covers common Music Center enums; formats ffmpeg can open but MC never mapped often fall back to codec `16` — not guaranteed to match “what stock would do” for unsupported types.
+`codec_map` follows Music Center: ffmpeg name → OpenMG `CODEC_NAME_MAP` id → `COmgDseeHxHelper` filter codec (e.g. mp3→2, flac→101→level uses 16). Unsupported library ids fail configuration instead of silently falling back.
 
-`codec_map` 只覆盖 Music Center 常见枚举；ffmpeg 能开但原版未映射的格式常回落 codec `16`——不保证与「原版对未支持格式会怎么做」一致。
+`codec_map` 对齐 Music Center：ffmpeg 名 → OpenMG 库号 → Helper 滤镜号（如 mp3→2，flac→101，码本再折 16）。库号不在官方允许表内则建流失败，不再静默落到 16。
 
 ---
 
