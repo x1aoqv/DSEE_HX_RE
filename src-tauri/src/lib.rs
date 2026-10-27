@@ -1,10 +1,10 @@
 mod debug_log;
 
 use dsee_kern::{
-    analyze_track, clear_prepared, default_output_path, default_slots,
-    detect_media_tools_in_app_dir, drop_prepared, file_resample_rate, media_tools_info,
-    plan_paths_rates, process_batch, set_advanced_dsp, set_ffmpeg_override, set_ffprobe_override,
-    MediaToolsInfo, TrackAnalysis, TrackHopProgress,
+    analyze_track, clear_prepared, default_output_path_for, default_slots,
+    detect_media_tools_in_app_dir, drop_prepared, file_output_bits, file_output_codec,
+    file_resample_rate, media_tools_info, plan_paths_rates, process_batch, set_advanced_dsp,
+    set_ffmpeg_override, set_ffprobe_override, MediaToolsInfo, TrackAnalysis, TrackHopProgress,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -182,22 +182,31 @@ fn detect_media_tools() -> MediaToolsInfo {
     info
 }
 
-/// advanced=false → 恢复原版自动；true 时 heq / f80 / fileRate 强制生效（level 仍经 analyze）
+/// advanced=false → 恢复原版自动；true 时 heq / 导出率·位深·编码强制生效（level 仍经 analyze）
 #[tauri::command]
-fn set_advanced_overrides(advanced: bool, heq: bool, f80: i32, file_rate: i32) {
+fn set_advanced_overrides(
+    advanced: bool,
+    heq: bool,
+    f80: i32,
+    file_rate: i32,
+    file_bits: i32,
+    file_codec: String,
+) {
     if advanced {
         let f80o = if matches!(f80, 1 | 2 | 4) {
             Some(f80)
         } else {
             None
         };
-        set_advanced_dsp(heq, f80o, file_rate);
+        set_advanced_dsp(heq, f80o, file_rate, file_bits, &file_codec);
         debug_log::evt(
             "settings",
-            &format!("advanced=1 heq={heq} f80={f80} fileRate={file_rate}"),
+            &format!(
+                "advanced=1 heq={heq} f80={f80} fileRate={file_rate} bits={file_bits} codec={file_codec}"
+            ),
         );
     } else {
-        set_advanced_dsp(true, None, 0);
+        set_advanced_dsp(true, None, 0, 0, "");
         debug_log::evt("settings", "advanced=0");
     }
 }
@@ -237,17 +246,23 @@ async fn process_queue(
         let mut items =
             plan_paths_rates(&paths, &rates, &out_dir, &default_bits).map_err(|e| e.to_string())?;
         let file_rate = file_resample_rate();
+        let file_bits = file_output_bits();
+        let file_codec = file_output_codec();
         for (it, t) in items.iter_mut().zip(tracks.iter()) {
-            it.output_bits = t.output_bits.clone();
+            it.output_bits = if matches!(file_bits, 16 | 24 | 32) {
+                file_bits.to_string()
+            } else {
+                t.output_bits.clone()
+            };
             it.output_rate = t.output_rate;
             it.slot_cost = t.slot_cost.unwrap_or(0) as usize;
-            // Extension / lossy→WAV gate uses final file rate when set.
+            // Extension uses final file rate + optional forced codec.
             let export_rate = if file_rate > 0 {
                 file_rate
             } else {
                 t.output_rate
             };
-            it.output = default_output_path(&it.input, &out_dir, export_rate);
+            it.output = default_output_path_for(&it.input, &out_dir, export_rate, file_codec);
         }
         let slots = default_slots();
         let app2 = app.clone();

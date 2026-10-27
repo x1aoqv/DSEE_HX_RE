@@ -35,13 +35,22 @@ export type AppSettings = {
    * 导出文件目标采样率（Hz）。0 = 跟随 DSEE 输出（cfg.dst）；
    * 非 0 时 DSEE 仍按分析倍率跑完，再 soxr 重采样到该率写入文件。
    */
-  advResampleRate: number;
+  advOutputRate: number;
+  /** 导出位深（高级开启时生效） */
+  advOutputBits: "16" | "24" | "32";
+  /** 导出编码（高级开启时生效） */
+  advOutputCodec: AdvOutputCodec;
 };
 
-/** 高级「重采样率」可选值（Hz）；0 = 跟随 DSEE */
-export const ADV_RESAMPLE_RATES = [
+export type AdvOutputCodec = "pcm" | "flac" | "alac";
+
+/** 高级「输出采样率」可选值（Hz）；0 = 跟随 DSEE */
+export const ADV_OUTPUT_RATES = [
   0, 44100, 48000, 88200, 96000, 176400, 192000,
 ] as const;
+
+export const ADV_OUTPUT_BITS = ["16", "24", "32"] as const;
+export const ADV_OUTPUT_CODECS: AdvOutputCodec[] = ["pcm", "flac", "alac"];
 
 /** 首次启动跟系统语言：非中文环境默认英文 */
 export function detectLocale(): Locale {
@@ -66,7 +75,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mediaToolsBootstrapped: false,
   advanced: false,
   advHeq: true,
-  advResampleRate: 0,
+  advOutputRate: 0,
+  advOutputBits: "32",
+  advOutputCodec: "flac",
 };
 
 function isBaseColor(v: unknown): v is BaseColorId {
@@ -152,11 +163,23 @@ export function loadSettings(): AppSettings {
         (typeof parsed.ffprobePath === "string" && parsed.ffprobePath.trim() !== ""),
       advanced: parsed.advanced === true,
       advHeq: parsed.advHeq !== false,
-      advResampleRate: ADV_RESAMPLE_RATES.includes(
-        parsed.advResampleRate as (typeof ADV_RESAMPLE_RATES)[number],
+      advOutputRate: (() => {
+        const legacy = (parsed as { advResampleRate?: number }).advResampleRate;
+        const rate = parsed.advOutputRate ?? legacy ?? 0;
+        return ADV_OUTPUT_RATES.includes(rate as (typeof ADV_OUTPUT_RATES)[number])
+          ? rate
+          : 0;
+      })(),
+      advOutputBits: ADV_OUTPUT_BITS.includes(
+        parsed.advOutputBits as (typeof ADV_OUTPUT_BITS)[number],
       )
-        ? (parsed.advResampleRate as number)
-        : 0,
+        ? (parsed.advOutputBits as "16" | "24" | "32")
+        : "32",
+      advOutputCodec: ADV_OUTPUT_CODECS.includes(
+        parsed.advOutputCodec as AdvOutputCodec,
+      )
+        ? (parsed.advOutputCodec as AdvOutputCodec)
+        : "flac",
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

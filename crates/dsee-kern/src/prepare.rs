@@ -8,7 +8,7 @@ use crate::wav;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::Mutex;
 
 /// 0 = auto; 1 = force F80 off; 2/4 = force that upsample.
@@ -17,6 +17,12 @@ static F80_FORCE: AtomicI32 = AtomicI32::new(0);
 /// Post-DSEE file sample rate. 0 = keep DSP `cfg.dst` (no extra resample).
 static FILE_RESAMPLE_RATE: AtomicI32 = AtomicI32::new(0);
 
+/// Export bit depth override. 0 = use per-request bits; 16/24/32 when advanced.
+static FILE_OUTPUT_BITS: AtomicI32 = AtomicI32::new(0);
+
+/// Export codec: 0 = follow source; 1 = PCM/WAV; 2 = FLAC; 3 = ALAC.
+static FILE_OUTPUT_CODEC: AtomicU8 = AtomicU8::new(0);
+
 fn normalize_file_rate(hz: i32) -> i32 {
     match hz {
         44_100 | 48_000 | 88_200 | 96_000 | 176_400 | 192_000 => hz,
@@ -24,14 +30,38 @@ fn normalize_file_rate(hz: i32) -> i32 {
     }
 }
 
-/// Apply advanced DSP overrides (HEQ / F80 / file resample). Level is per analyze.
-pub fn set_advanced_dsp(heq: bool, f80: Option<i32>, file_rate: i32) {
+fn normalize_file_bits(bits: i32) -> i32 {
+    match bits {
+        16 | 24 | 32 => bits,
+        _ => 0,
+    }
+}
+
+fn normalize_file_codec(codec: &str) -> u8 {
+    match codec.trim().to_ascii_lowercase().as_str() {
+        "pcm" | "wav" => 1,
+        "flac" => 2,
+        "alac" | "m4a" => 3,
+        _ => 0,
+    }
+}
+
+/// Apply advanced DSP / export overrides. Level is per analyze.
+pub fn set_advanced_dsp(
+    heq: bool,
+    f80: Option<i32>,
+    file_rate: i32,
+    file_bits: i32,
+    file_codec: &str,
+) {
     let f80v = match f80 {
         Some(1) | Some(2) | Some(4) => f80.unwrap(),
         _ => 0,
     };
     F80_FORCE.store(f80v, Ordering::SeqCst);
     FILE_RESAMPLE_RATE.store(normalize_file_rate(file_rate), Ordering::SeqCst);
+    FILE_OUTPUT_BITS.store(normalize_file_bits(file_bits), Ordering::SeqCst);
+    FILE_OUTPUT_CODEC.store(normalize_file_codec(file_codec), Ordering::SeqCst);
     unsafe {
         dsee_set_heq_enabled(if heq { 1 } else { 0 });
         dsee_set_f80_override(f80v);
@@ -41,6 +71,21 @@ pub fn set_advanced_dsp(heq: bool, f80: Option<i32>, file_rate: i32) {
 /// Target rate for the exported file after DSEE; 0 = same as DSP output.
 pub fn file_resample_rate() -> i32 {
     FILE_RESAMPLE_RATE.load(Ordering::SeqCst)
+}
+
+/// Export bit depth; 0 = use request bits.
+pub fn file_output_bits() -> i32 {
+    FILE_OUTPUT_BITS.load(Ordering::SeqCst)
+}
+
+/// Forced export codec name (`pcm` / `flac` / `alac`), or `None` = follow source.
+pub fn file_output_codec() -> Option<&'static str> {
+    match FILE_OUTPUT_CODEC.load(Ordering::SeqCst) {
+        1 => Some("pcm"),
+        2 => Some("flac"),
+        3 => Some("alac"),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]

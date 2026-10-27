@@ -5,7 +5,7 @@ use crate::ffi::{
     dsee_process_i32, DseeCfg, DseeSource,
 };
 use crate::media::{self, MediaInfo, S32leDecodeStream};
-use crate::prepare::file_resample_rate;
+use crate::prepare::{file_output_bits, file_resample_rate};
 use crate::wav::{self, WavWriter};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -401,12 +401,16 @@ where
     } else {
         tmp_wav
     };
+    let export_bits = match file_output_bits() {
+        b @ (16 | 24 | 32) => b.to_string(),
+        _ => req.output_bits.to_string(),
+    };
     if let Err(e) = finalize_export(
         req.input,
         &pcm_path,
         req.output,
         export_rate,
-        req.output_bits,
+        &export_bits,
     ) {
         let _ = fs::remove_file(&pcm_path);
         return Err(e);

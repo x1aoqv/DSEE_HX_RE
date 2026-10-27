@@ -30,9 +30,24 @@ fn source_ext(input: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-/// Extension for the export file. Hi-res rates force WAV when the source
-/// codec family cannot carry >48 kHz (MP3/AAC/Ogg/Opus/WMA).
+/// Extension for the export file.
+/// `force_codec`: `pcm`→wav, `flac`→flac, `alac`→m4a; `None` follows source
+/// (hi-res rates force WAV when source cannot carry >48 kHz).
 pub fn export_extension(input: &Path, output_rate: i32) -> String {
+    export_extension_for(input, output_rate, None)
+}
+
+pub fn export_extension_for(
+    input: &Path,
+    output_rate: i32,
+    force_codec: Option<&str>,
+) -> String {
+    match force_codec.map(|c| c.trim().to_ascii_lowercase()).as_deref() {
+        Some("pcm") | Some("wav") => return "wav".into(),
+        Some("flac") => return "flac".into(),
+        Some("alac") | Some("m4a") => return "m4a".into(),
+        _ => {}
+    }
     let ext = source_ext(input);
     match ext.as_str() {
         "mp3" | "aac" | "ogg" | "opus" | "wma" if output_rate > 48_000 => "wav".into(),
@@ -53,11 +68,20 @@ fn dirs_equal(a: &Path, b: &Path) -> bool {
 /// only when the destination directory is the source directory (or would
 /// overwrite the source file).
 pub fn default_output_path(input: &Path, out_dir: &Path, output_rate: i32) -> PathBuf {
+    default_output_path_for(input, out_dir, output_rate, None)
+}
+
+pub fn default_output_path_for(
+    input: &Path,
+    out_dir: &Path,
+    output_rate: i32,
+    force_codec: Option<&str>,
+) -> PathBuf {
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("out");
-    let ext = export_extension(input, output_rate);
+    let ext = export_extension_for(input, output_rate, force_codec);
     let same_dir = input
         .parent()
         .map(|p| dirs_equal(p, out_dir))
@@ -407,6 +431,18 @@ mod tests {
         assert_eq!(
             export_extension(Path::new(r"C:\a\song.flac"), 176_400),
             "flac"
+        );
+        assert_eq!(
+            export_extension_for(Path::new(r"C:\a\song.mp3"), 176_400, Some("flac")),
+            "flac"
+        );
+        assert_eq!(
+            export_extension_for(Path::new(r"C:\a\song.flac"), 96_000, Some("alac")),
+            "m4a"
+        );
+        assert_eq!(
+            export_extension_for(Path::new(r"C:\a\song.flac"), 96_000, Some("pcm")),
+            "wav"
         );
     }
 

@@ -97,12 +97,16 @@ type Track = {
   levelOverride: number | null;
 };
 
-const BITS = ["16", "24", "32"] as const;
 /** 展示用：16（关）在前，数值递减 */
 const LEVELS = [16, 15, 14, 13, 12, 11, 10, 9, 8] as const;
 const DEFAULT_UP = 4;
 const DEFAULT_BITS = "32";
 const AUDIO_EXT = ["wav", "flac", "mp3", "m4a", "aac", "ogg", "wma", "aiff", "ape"];
+
+/** 高级开启用设置里的输出位深；关闭时固定 32（DSP 默认）。 */
+function effectiveBits(s: AppSettings): string {
+  return s.advanced ? s.advOutputBits : DEFAULT_BITS;
+}
 
 /** 该轨允许的最高上采样倍率（不含 1× 同率） */
 function maxAllowedUp(a: TrackAnalysis): number {
@@ -142,8 +146,6 @@ function App() {
   const [rowProg, setRowProg] = useState<Record<string, RowProg>>({});
   /** 工具栏批量上采样；非 null 时覆盖下行；全员最高一致才填，否则空 */
   const [globalUp, setGlobalUp] = useState<number | null>(null);
-  /** 工具栏批量位深；默认 32；各行不全一致时为空，改总控则全行跟随 */
-  const [globalBits, setGlobalBits] = useState<string | null>(DEFAULT_BITS);
   const [dragOver, setDragOver] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
@@ -333,7 +335,9 @@ function App() {
       advanced: s.advanced,
       heq: s.advHeq,
       f80: 0,
-      fileRate: s.advanced ? s.advResampleRate : 0,
+      fileRate: s.advanced ? s.advOutputRate : 0,
+      fileBits: s.advanced ? Number(s.advOutputBits) : 0,
+      fileCodec: s.advanced ? s.advOutputCodec : "",
     });
     return () => {
       unlistenBatch?.();
@@ -380,7 +384,7 @@ function App() {
     const maxes = upsTracks.map((t) => maxAllowedUp(t.analysis!));
     const common = maxes[0];
     const allSame = maxes.every((m) => m === common);
-    const bits = globalBits ?? DEFAULT_BITS;
+    const bits = effectiveBits(settingsRef.current);
     dlog("up_policy", {
       n: upsTracks.length,
       maxes,
@@ -396,7 +400,7 @@ function App() {
           try {
             const a = await analyzeOne(
               t.path,
-              t.bits || bits,
+              bits,
               common,
               t.levelOverride,
             );
@@ -421,7 +425,7 @@ function App() {
         try {
           const a = await analyzeOne(
             t.path,
-            t.bits || bits,
+            bits,
             want,
             t.levelOverride,
           );
@@ -446,9 +450,9 @@ function App() {
       dlog("ingest", { n: 0, skipped: raw.length });
       return;
     }
-    dlog("ingest", { n: list.length, bits: globalBits ?? DEFAULT_BITS });
+    const bits = effectiveBits(settingsRef.current);
+    dlog("ingest", { n: list.length, bits });
 
-    const bits = globalBits ?? DEFAULT_BITS;
     let working: Track[] = [];
 
     setTracks((prev) => {
@@ -537,15 +541,6 @@ function App() {
     await ingestPaths(list);
   }
 
-  function syncGlobalBits(list: Track[]) {
-    if (!list.length) {
-      setGlobalBits(DEFAULT_BITS);
-      return;
-    }
-    const first = list[0].bits;
-    setGlobalBits(list.every((t) => t.bits === first) ? first : null);
-  }
-
   function removeTrack(idx: number) {
     const t = tracks[idx];
     if (t) {
@@ -555,7 +550,6 @@ function App() {
     const next = tracks.filter((_, i) => i !== idx);
     setTracks(next);
     void applyUpsPolicy(next);
-    syncGlobalBits(next);
   }
 
   function clearTracks() {
@@ -564,7 +558,6 @@ function App() {
     setTracks([]);
     setRowProg({});
     setGlobalUp(null);
-    setGlobalBits(DEFAULT_BITS);
   }
 
   async function reanalyzeAll(up: number | undefined, bits: string) {
@@ -596,32 +589,7 @@ function App() {
   async function applyGlobalUp(up: number) {
     dlog("up_policy", { global_set: up, n: tracks.length });
     setGlobalUp(up);
-    const bits = globalBits ?? tracks[0]?.bits ?? DEFAULT_BITS;
-    if (globalBits === null) {
-      setTracks((prev) => prev.map((t) => ({ ...t, loading: true })));
-      await Promise.all(
-        tracks.map(async (t) => {
-          try {
-            const a = await analyzeOne(t.path, t.bits, up, t.levelOverride);
-            setTracks((prev) =>
-              prev.map((x) =>
-                x.path === t.path
-                  ? { ...x, analysis: a, loading: false }
-                  : x,
-              ),
-            );
-          } catch {
-            setTracks((prev) =>
-              prev.map((x) =>
-                x.path === t.path ? { ...x, loading: false } : x,
-              ),
-            );
-          }
-        }),
-      );
-    } else {
-      await reanalyzeAll(up, bits);
-    }
+    await reanalyzeAll(up, effectiveBits(settingsRef.current));
   }
 
   async function applyGlobalLevel(level: number) {
@@ -637,12 +605,18 @@ function App() {
           globalUp ??
           (t.analysis?.sameRateRepair ? 1 : t.analysis?.upFactor);
         try {
-          const a = await analyzeOne(t.path, t.bits, up, level);
+          const a = await analyzeOne(
+            t.path,
+            effectiveBits(settingsRef.current),
+            up,
+            level,
+          );
           setTracks((prev) =>
             prev.map((x) =>
               x.path === t.path
                 ? {
                     ...x,
+                    bits: a.outputBits,
                     levelOverride: level,
                     analysis: a,
                     loading: false,
@@ -660,13 +634,6 @@ function App() {
         }
       }),
     );
-  }
-
-  async function applyGlobalBits(bits: string) {
-    dlog("bits", { global_set: bits, n: tracks.length });
-    setGlobalBits(bits);
-    const up = globalUp ?? undefined;
-    await reanalyzeAll(up, bits);
   }
 
   async function setTrackUp(idx: number, up: number) {
@@ -689,10 +656,17 @@ function App() {
       ),
     );
     try {
-      const a = await analyzeOne(t.path, t.bits, up, t.levelOverride);
+      const a = await analyzeOne(
+        t.path,
+        effectiveBits(settingsRef.current),
+        up,
+        t.levelOverride,
+      );
       setTracks((prev) =>
         prev.map((x, i) =>
-          i === idx ? { ...x, analysis: a, loading: false } : x,
+          i === idx
+            ? { ...x, bits: a.outputBits, analysis: a, loading: false }
+            : x,
         ),
       );
     } catch (e) {
@@ -716,12 +690,18 @@ function App() {
       ),
     );
     try {
-      const a = await analyzeOne(t.path, t.bits, up, level);
+      const a = await analyzeOne(
+        t.path,
+        effectiveBits(settingsRef.current),
+        up,
+        level,
+      );
       setTracks((prev) =>
         prev.map((x, i) =>
           i === idx
             ? {
                 ...x,
+                bits: a.outputBits,
                 levelOverride: level,
                 analysis: a,
                 loading: false,
@@ -734,35 +714,6 @@ function App() {
         prev.map((x, i) => (i === idx ? { ...x, loading: false } : x)),
       );
       dlog("err", { event: "set_level", path: t.path, err: String(e) });
-    }
-  }
-
-  async function setTrackBits(idx: number, bits: string) {
-    const t = tracks[idx];
-    if (!t) return;
-    dlog("bits", { row: t.path, bits });
-    const projected = tracks.map((x, i) =>
-      i === idx ? { ...x, bits } : x,
-    );
-    syncGlobalBits(projected);
-    const up =
-      globalUp ??
-      (t.analysis?.sameRateRepair ? 1 : t.analysis?.upFactor);
-    setTracks((prev) =>
-      prev.map((x, i) => (i === idx ? { ...x, bits, loading: true } : x)),
-    );
-    try {
-      const a = await analyzeOne(t.path, bits, up, t.levelOverride);
-      setTracks((prev) =>
-        prev.map((x, i) =>
-          i === idx ? { ...x, bits, analysis: a, loading: false } : x,
-        ),
-      );
-    } catch (e) {
-      setTracks((prev) =>
-        prev.map((x, i) => (i === idx ? { ...x, loading: false } : x)),
-      );
-      dlog("err", { event: "set_bits", path: t.path, err: String(e) });
     }
   }
 
@@ -794,7 +745,7 @@ function App() {
         tracks: tracks.map((t) => ({
           path: t.path,
           outputRate: t.analysis!.outputRate,
-          outputBits: t.bits,
+          outputBits: effectiveBits(settingsRef.current),
           slotCost: t.analysis!.slotCost,
         })),
         outputDir,
@@ -816,9 +767,18 @@ function App() {
       // Sessions were consumed; re-analyze so a second run stays cache-hot.
       for (const t of tracks) {
         const up = t.analysis?.sameRateRepair ? 1 : t.analysis?.upFactor;
-        void analyzeOne(t.path, t.bits, up, t.levelOverride).then((a) => {
+        void analyzeOne(
+          t.path,
+          effectiveBits(settingsRef.current),
+          up,
+          t.levelOverride,
+        ).then((a) => {
           setTracks((prev) =>
-            prev.map((x) => (x.path === t.path ? { ...x, analysis: a } : x)),
+            prev.map((x) =>
+              x.path === t.path
+                ? { ...x, bits: a.outputBits, analysis: a }
+                : x,
+            ),
           );
         });
       }
@@ -863,7 +823,6 @@ function App() {
             <col className="col-meta" />
             <col className="col-mode" />
             <col className="col-mode" />
-            <col className="col-bits" />
             <col className="col-status" />
             <col className="col-act" />
           </colgroup>
@@ -923,20 +882,6 @@ function App() {
                   }))}
                 />
               </th>
-              <th className="col-bits toolbar-batch-cell">
-                <RoundSelect
-                  className={`toolbar-batch${globalBits === null ? " is-blank" : ""}`}
-                  value={globalBits ?? DEFAULT_BITS}
-                  disabled={busy || tracks.length === 0}
-                  onChange={(v) => void applyGlobalBits(v)}
-                  aria-label={d.batchBits}
-                  title={d.batchBits}
-                  options={BITS.map((b) => ({
-                    value: b,
-                    label: `${b}-bit`,
-                  }))}
-                />
-              </th>
               <th className="col-status toolbar-status-cell">
                 <div className="toolbar-span-right">
                   <button
@@ -975,7 +920,6 @@ function App() {
               <th className="col-meta">{d.colRate}</th>
               <th className="col-mode">{d.colSame}</th>
               <th className="col-mode">{d.colUp}</th>
-              <th className="col-bits">{d.colBits}</th>
               <th className="col-status">{d.colStatus}</th>
               <th className="col-act" />
             </tr>
@@ -1087,22 +1031,6 @@ function App() {
                         />
                       )}
                     </td>
-                    <td className="col-bits">
-                      <RoundSelect
-                        value={
-                          (BITS as readonly string[]).includes(track.bits)
-                            ? track.bits
-                            : DEFAULT_BITS
-                        }
-                        disabled={busy || track.loading}
-                        onChange={(v) => void setTrackBits(idx, v)}
-                        aria-label={d.colBits}
-                        options={BITS.map((b) => ({
-                          value: b,
-                          label: `${b}-bit`,
-                        }))}
-                      />
-                    </td>
                     <td
                       className={[
                         "col-status",
@@ -1183,12 +1111,13 @@ function App() {
               onAdvancedApplied={(next) => {
                 settingsRef.current = next;
                 if (!tracks.length) return;
-                const bits = globalBits ?? DEFAULT_BITS;
+                const bits = effectiveBits(next);
                 const clearLevel = !next.advanced;
                 void (async () => {
                   setTracks((prev) =>
                     prev.map((t) => ({
                       ...t,
+                      bits,
                       loading: true,
                       levelOverride: clearLevel ? null : t.levelOverride,
                     })),
@@ -1204,7 +1133,7 @@ function App() {
                       try {
                         const a = await analyzeOne(
                           t.path,
-                          t.bits || bits,
+                          bits,
                           up,
                           lv,
                         );

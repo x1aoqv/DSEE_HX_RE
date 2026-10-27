@@ -12,7 +12,9 @@ import {
 import type { Dict, Locale } from "./i18n";
 import RoundSelect from "./RoundSelect";
 import {
-  ADV_RESAMPLE_RATES,
+  ADV_OUTPUT_BITS,
+  ADV_OUTPUT_CODECS,
+  ADV_OUTPUT_RATES,
   type AppSettings,
   type BaseColorId,
 } from "./settings";
@@ -124,12 +126,16 @@ export default function SettingsPage({
           advanced: s.advanced,
           heq: s.advHeq,
           f80: 0,
-          fileRate: s.advanced ? s.advResampleRate : 0,
+          fileRate: s.advanced ? s.advOutputRate : 0,
+          fileBits: s.advanced ? Number(s.advOutputBits) : 0,
+          fileCodec: s.advanced ? s.advOutputCodec : "",
         });
         dlog("settings", {
           advanced: s.advanced,
           heq: s.advHeq,
-          fileRate: s.advanced ? s.advResampleRate : 0,
+          fileRate: s.advanced ? s.advOutputRate : 0,
+          fileBits: s.advanced ? s.advOutputBits : "-",
+          fileCodec: s.advanced ? s.advOutputCodec : "-",
         });
       } catch (e) {
         dlog("err", { event: "advanced", err: String(e) });
@@ -432,29 +438,70 @@ export default function SettingsPage({
                 />
               </div>
               <div className="settings-adv-row">
-                <span className="settings-label">{d.advResampleRate}</span>
+                <span className="settings-label">{d.advOutputRate}</span>
                 <RoundSelect
                   className="settings-control"
-                  value={String(settings.advResampleRate)}
+                  value={String(settings.advOutputRate)}
                   disabled={busy}
-                  aria-label={d.advResampleRate}
+                  aria-label={d.advOutputRate}
                   onChange={(v) =>
                     void patchAdvanced({
-                      advResampleRate: Number(v) || 0,
+                      advOutputRate: Number(v) || 0,
                     })
                   }
-                  options={ADV_RESAMPLE_RATES.map((hz) => ({
+                  options={ADV_OUTPUT_RATES.map((hz) => ({
                     value: String(hz),
                     label:
                       hz === 0
-                        ? d.advResampleFollow
+                        ? d.advOutputRateFollow
                         : hz >= 1000
                           ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz`
                           : `${hz} Hz`,
                   }))}
                 />
               </div>
-              <p className="settings-hint">{d.advResampleHint}</p>
+              <div className="settings-adv-row">
+                <span className="settings-label">{d.advOutputBits}</span>
+                <RoundSelect
+                  className="settings-control"
+                  value={settings.advOutputBits}
+                  disabled={busy}
+                  aria-label={d.advOutputBits}
+                  onChange={(v) =>
+                    void patchAdvanced({
+                      advOutputBits: v as "16" | "24" | "32",
+                    })
+                  }
+                  options={ADV_OUTPUT_BITS.map((b) => ({
+                    value: b,
+                    label: `${b}-bit`,
+                  }))}
+                />
+              </div>
+              <div className="settings-adv-row">
+                <span className="settings-label">{d.advOutputCodec}</span>
+                <RoundSelect
+                  className="settings-control"
+                  value={settings.advOutputCodec}
+                  disabled={busy}
+                  aria-label={d.advOutputCodec}
+                  onChange={(v) =>
+                    void patchAdvanced({
+                      advOutputCodec: v as "pcm" | "flac" | "alac",
+                    })
+                  }
+                  options={ADV_OUTPUT_CODECS.map((c) => ({
+                    value: c,
+                    label:
+                      c === "pcm"
+                        ? d.advCodecPcm
+                        : c === "flac"
+                          ? d.advCodecFlac
+                          : d.advCodecAlac,
+                  }))}
+                />
+              </div>
+              <p className="settings-hint">{d.advOutputRateHint}</p>
             </div>
           ) : null}
         </section>
