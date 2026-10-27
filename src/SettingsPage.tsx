@@ -11,7 +11,11 @@ import {
 } from "./dialogMemory";
 import type { Dict, Locale } from "./i18n";
 import RoundSelect from "./RoundSelect";
-import type { AppSettings, BaseColorId } from "./settings";
+import {
+  ADV_RESAMPLE_RATES,
+  type AppSettings,
+  type BaseColorId,
+} from "./settings";
 import { BASE_COLORS, getBaseColor, saveSettings } from "./settings";
 
 const REPO_URL = "https://github.com/x1aoqv/DSEE_HX_RE";
@@ -120,10 +124,12 @@ export default function SettingsPage({
           advanced: s.advanced,
           heq: s.advHeq,
           f80: 0,
+          fileRate: s.advanced ? s.advResampleRate : 0,
         });
         dlog("settings", {
           advanced: s.advanced,
           heq: s.advHeq,
+          fileRate: s.advanced ? s.advResampleRate : 0,
         });
       } catch (e) {
         dlog("err", { event: "advanced", err: String(e) });
@@ -425,6 +431,30 @@ export default function SettingsPage({
                   ]}
                 />
               </div>
+              <div className="settings-adv-row">
+                <span className="settings-label">{d.advResampleRate}</span>
+                <RoundSelect
+                  className="settings-control"
+                  value={String(settings.advResampleRate)}
+                  disabled={busy}
+                  aria-label={d.advResampleRate}
+                  onChange={(v) =>
+                    void patchAdvanced({
+                      advResampleRate: Number(v) || 0,
+                    })
+                  }
+                  options={ADV_RESAMPLE_RATES.map((hz) => ({
+                    value: String(hz),
+                    label:
+                      hz === 0
+                        ? d.advResampleFollow
+                        : hz >= 1000
+                          ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz`
+                          : `${hz} Hz`,
+                  }))}
+                />
+              </div>
+              <p className="settings-hint">{d.advResampleHint}</p>
             </div>
           ) : null}
         </section>

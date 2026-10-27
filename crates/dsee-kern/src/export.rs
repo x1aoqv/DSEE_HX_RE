@@ -2,7 +2,7 @@
 //! copy tags / cover / lyrics, and choose a non-colliding name.
 
 use crate::error::{DseeError, Result};
-use crate::media::ffmpeg_path;
+use crate::media::{ffmpeg_path, soxr_aresample_filter};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -104,6 +104,44 @@ fn flac_sample_fmt(bits: &str) -> &'static str {
         "24" => "s32", // ffmpeg flac encodes 24 in s32 container
         _ => "s32",
     }
+}
+
+/// Resample a PCM WAV to `rate` with soxr at max precision (s32le intermediate).
+pub fn resample_wav_soxr(src: &Path, dst: &Path, rate: i32) -> Result<()> {
+    if rate <= 0 {
+        return Err(DseeError::Msg("invalid resample rate".into()));
+    }
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).map_err(DseeError::Io)?;
+    }
+    let ffmpeg = ffmpeg_path()?;
+    let filter = soxr_aresample_filter(rate);
+    let out = command(&ffmpeg)
+        .args([
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            &src.display().to_string(),
+            "-af",
+            &filter,
+            "-ar",
+            &rate.to_string(),
+            "-c:a",
+            "pcm_s32le",
+            &dst.display().to_string(),
+        ])
+        .output()
+        .map_err(|e| DseeError::Ffmpeg(e.to_string()))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(DseeError::Ffmpeg(if err.is_empty() {
+            format!("ffmpeg resample exit {}", out.status)
+        } else {
+            err
+        }));
+    }
+    Ok(())
 }
 
 /// Re-encode / remux `pcm_wav` to `dest`, copying metadata (and cover) from `source`.

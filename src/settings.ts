@@ -31,7 +31,17 @@ export type AppSettings = {
   advanced: boolean;
   /** HEQ 前置整形；false = 绕过 */
   advHeq: boolean;
+  /**
+   * 导出文件目标采样率（Hz）。0 = 跟随 DSEE 输出（cfg.dst）；
+   * 非 0 时 DSEE 仍按分析倍率跑完，再 soxr 重采样到该率写入文件。
+   */
+  advResampleRate: number;
 };
+
+/** 高级「重采样率」可选值（Hz）；0 = 跟随 DSEE */
+export const ADV_RESAMPLE_RATES = [
+  0, 44100, 48000, 88200, 96000, 176400, 192000,
+] as const;
 
 /** 首次启动跟系统语言：非中文环境默认英文 */
 export function detectLocale(): Locale {
@@ -56,6 +66,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mediaToolsBootstrapped: false,
   advanced: false,
   advHeq: true,
+  advResampleRate: 0,
 };
 
 function isBaseColor(v: unknown): v is BaseColorId {
@@ -141,6 +152,11 @@ export function loadSettings(): AppSettings {
         (typeof parsed.ffprobePath === "string" && parsed.ffprobePath.trim() !== ""),
       advanced: parsed.advanced === true,
       advHeq: parsed.advHeq !== false,
+      advResampleRate: ADV_RESAMPLE_RATES.includes(
+        parsed.advResampleRate as (typeof ADV_RESAMPLE_RATES)[number],
+      )
+        ? (parsed.advResampleRate as number)
+        : 0,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

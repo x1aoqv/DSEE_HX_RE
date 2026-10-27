@@ -333,6 +333,7 @@ function App() {
       advanced: s.advanced,
       heq: s.advHeq,
       f80: 0,
+      fileRate: s.advanced ? s.advResampleRate : 0,
     });
     return () => {
       unlistenBatch?.();

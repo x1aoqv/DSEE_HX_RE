@@ -1,6 +1,6 @@
 [package]
 name = "DSEE_HX_RE"
-version = "1.1.1"
+version = "1.1.2"
 description = "Sony DSEE HX ? Reverse Engineering & Reimplementation"
 authors = ["???"]
 edition = "2021"

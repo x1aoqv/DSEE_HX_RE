@@ -1,10 +1,11 @@
 use crate::error::{DseeError, Result};
-use crate::export::finalize_export;
+use crate::export::{finalize_export, resample_wav_soxr};
 use crate::ffi::{
     dsee_fill_source, dsee_heq, dsee_heq_delays, dsee_heq_gain, dsee_mem_size, dsee_open_source,
     dsee_process_i32, DseeCfg, DseeSource,
 };
 use crate::media::{self, MediaInfo, S32leDecodeStream};
+use crate::prepare::file_resample_rate;
 use crate::wav::{self, WavWriter};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -72,6 +73,10 @@ fn emit_hops<F: FnMut(usize, usize)>(on_hop: &mut Option<F>, done: usize, total:
 }
 
 fn temp_pcm_wav_path(final_out: &Path) -> PathBuf {
+    temp_pcm_wav_path_suffix(final_out, "pcm")
+}
+
+fn temp_pcm_wav_path_suffix(final_out: &Path, tag: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -84,7 +89,7 @@ fn temp_pcm_wav_path(final_out: &Path) -> PathBuf {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("dsee");
-    dir.join(format!(".{stem}.{nanos}.dsee_pcm.tmp.wav"))
+    dir.join(format!(".{stem}.{nanos}.dsee_{tag}.tmp.wav"))
 }
 
 pub(crate) fn open_session_pub(
@@ -380,24 +385,40 @@ where
         let _ = fs::remove_file(&tmp_wav);
         return Err(DseeError::Msg("input too short for one hop".into()));
     }
+    // DSEE runs at cfg.dst; optional advanced file resample (e.g. 176.4k → 96k).
+    let dsp_rate = sess.cfg.dst;
+    let want = file_resample_rate();
+    let export_rate = if want > 0 { want } else { dsp_rate };
+    let pcm_path = if export_rate != dsp_rate {
+        let rs = temp_pcm_wav_path_suffix(req.output, "rs");
+        if let Err(e) = resample_wav_soxr(&tmp_wav, &rs, export_rate) {
+            let _ = fs::remove_file(&tmp_wav);
+            let _ = fs::remove_file(&rs);
+            return Err(e);
+        }
+        let _ = fs::remove_file(&tmp_wav);
+        rs
+    } else {
+        tmp_wav
+    };
     if let Err(e) = finalize_export(
         req.input,
-        &tmp_wav,
+        &pcm_path,
         req.output,
-        sess.cfg.dst,
+        export_rate,
         req.output_bits,
     ) {
-        let _ = fs::remove_file(&tmp_wav);
+        let _ = fs::remove_file(&pcm_path);
         return Err(e);
     }
-    let _ = fs::remove_file(&tmp_wav);
+    let _ = fs::remove_file(&pcm_path);
     write_s += t0.elapsed().as_secs_f64();
     emit_hops(&mut on_hop, hops_done, hops_done.max(1));
 
     Ok(ProcessReport {
         input_rate: info.rate,
         output_rate: req.output_rate,
-        wav_rate: sess.cfg.dst,
+        wav_rate: export_rate,
         hops: hops_done,
         samples_out: hops_done * sess.n_out,
         mode: sess.source.mode,

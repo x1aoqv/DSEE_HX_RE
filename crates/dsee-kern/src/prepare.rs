@@ -14,17 +14,33 @@ use std::sync::Mutex;
 /// 0 = auto; 1 = force F80 off; 2/4 = force that upsample.
 static F80_FORCE: AtomicI32 = AtomicI32::new(0);
 
-/// Apply advanced DSP overrides (HEQ / F80). Level is passed per analyze call.
-pub fn set_advanced_dsp(heq: bool, f80: Option<i32>) {
+/// Post-DSEE file sample rate. 0 = keep DSP `cfg.dst` (no extra resample).
+static FILE_RESAMPLE_RATE: AtomicI32 = AtomicI32::new(0);
+
+fn normalize_file_rate(hz: i32) -> i32 {
+    match hz {
+        44_100 | 48_000 | 88_200 | 96_000 | 176_400 | 192_000 => hz,
+        _ => 0,
+    }
+}
+
+/// Apply advanced DSP overrides (HEQ / F80 / file resample). Level is per analyze.
+pub fn set_advanced_dsp(heq: bool, f80: Option<i32>, file_rate: i32) {
     let f80v = match f80 {
         Some(1) | Some(2) | Some(4) => f80.unwrap(),
         _ => 0,
     };
     F80_FORCE.store(f80v, Ordering::SeqCst);
+    FILE_RESAMPLE_RATE.store(normalize_file_rate(file_rate), Ordering::SeqCst);
     unsafe {
         dsee_set_heq_enabled(if heq { 1 } else { 0 });
         dsee_set_f80_override(f80v);
     }
+}
+
+/// Target rate for the exported file after DSEE; 0 = same as DSP output.
+pub fn file_resample_rate() -> i32 {
+    FILE_RESAMPLE_RATE.load(Ordering::SeqCst)
 }
 
 #[derive(Clone, Debug, Serialize)]

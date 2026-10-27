@@ -26,6 +26,14 @@ fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
 static FFMPEG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 static FFPROBE_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+/// FFmpeg soxr `precision` max (aresample range 15–33).
+pub const SOX_PRECISION: u32 = 33;
+
+/// `aresample` filter string: soxr at max precision, output sample rate `osr`.
+pub fn soxr_aresample_filter(osr: i32) -> String {
+    format!("aresample=resampler=soxr:precision={SOX_PRECISION}:osr={osr}")
+}
+
 /// Explicit absolute path from the UI (empty / None → not configured).
 pub fn set_ffmpeg_override(path: Option<PathBuf>) {
     if let Ok(mut g) = FFMPEG_OVERRIDE.lock() {
@@ -331,9 +339,9 @@ impl S32leDecodeStream {
             path.display().to_string(),
         ];
         if let Some(rate) = ar.filter(|&r| r > 0) {
-            // soxr ≈ high-quality InputFsconv; -ar alone uses default swr.
+            // soxr max precision ≈ high-quality InputFsconv; -ar alone uses swr.
             args.push("-af".into());
-            args.push(format!("aresample=resampler=soxr:precision=28:osr={rate}"));
+            args.push(soxr_aresample_filter(rate));
             args.push("-ar".into());
             args.push(rate.to_string());
         }

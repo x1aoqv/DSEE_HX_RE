@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "DSEE_HX_RE"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "dsee-kern",
  "serde",
