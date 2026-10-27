@@ -6,6 +6,7 @@
 
 mod batch;
 mod error;
+mod export;
 mod ffi;
 mod media;
 mod prepare;
@@ -13,10 +14,11 @@ mod process;
 mod wav;
 
 pub use batch::{
-    default_jobs, default_output_path, default_slots, is_batch_source, list_audio_files, plan_dir,
-    plan_dir_repeat, plan_paths, plan_paths_rates, process_batch, BatchItem, BatchItemReport,
-    BatchReport, TrackHopProgress,
+    default_jobs, default_slots, is_batch_source, list_audio_files, plan_dir, plan_dir_repeat,
+    plan_paths, plan_paths_rates, process_batch, BatchItem, BatchItemReport, BatchReport,
+    TrackHopProgress,
 };
+pub use export::{default_output_path, export_extension, finalize_export};
 pub use error::{DseeError, Result};
 pub use media::{
     decode_s32le_stereo, detect_media_tools_in_app_dir, media_tools_info, probe,

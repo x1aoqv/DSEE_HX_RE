@@ -122,7 +122,8 @@ function parentDir(path: string) {
 
 function isDseeOutput(path: string) {
   const n = fileName(path).toLowerCase();
-  return n.includes("_dsee_") || n.includes("_dsee.") || n.endsWith("_dsee.wav");
+  // `track_dsee.flac` / legacy `track_dsee_88200.wav`
+  return n.includes("_dsee.") || n.includes("_dsee_") || n.endsWith("_dsee.wav");
 }
 
 function isAudioPath(path: string) {

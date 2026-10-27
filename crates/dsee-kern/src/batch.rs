@@ -74,7 +74,8 @@ pub fn is_batch_source(path: &Path) -> bool {
         return false;
     }
     let lower = name.to_ascii_lowercase();
-    if lower.contains("_dsee_") || lower.contains("_dsee.") || lower.ends_with("_dsee.wav") {
+    // Skip our own exports (`track_dsee.flac`, legacy `*_dsee_88200.wav`).
+    if lower.contains("_dsee.") || lower.contains("_dsee_") || lower.ends_with("_dsee.wav") {
         return false;
     }
     let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
@@ -104,13 +105,7 @@ pub fn list_audio_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-pub fn default_output_path(input: &Path, out_dir: &Path, rate: i32) -> PathBuf {
-    let stem = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("out");
-    out_dir.join(format!("{stem}_dsee_{rate}.wav"))
-}
+pub use crate::export::default_output_path;
 
 pub fn plan_dir(in_dir: &Path, out_dir: &Path, rate: i32) -> Result<Vec<BatchItem>> {
     plan_dir_repeat(in_dir, out_dir, rate, 1)
@@ -133,19 +128,24 @@ pub fn plan_dir_repeat(
     let repeat = repeat.max(1);
     let mut items = Vec::with_capacity(files.len() * repeat);
     for input in &files {
-        let stem = input
+        let base = default_output_path(input, out_dir, rate);
+        let stem = base
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("out");
+        let ext = base
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("flac");
         for r in 0..repeat {
-            let name = if repeat == 1 {
-                format!("{stem}_dsee_{rate}.wav")
+            let dest = if repeat == 1 {
+                base.clone()
             } else {
-                format!("{stem}_r{r:02}_dsee_{rate}.wav")
+                out_dir.join(format!("{stem}_r{r:02}.{ext}"))
             };
             items.push(BatchItem {
                 input: input.clone(),
-                output: out_dir.join(name),
+                output: dest,
                 output_rate: rate,
                 output_bits: "24".into(),
                 slot_cost: 0,

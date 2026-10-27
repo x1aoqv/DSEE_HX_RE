@@ -34,9 +34,9 @@ Requires **Windows x64**. ffmpeg + ffprobe must be available (on `PATH`, or set 
 4. 按需改每行（或工具栏批量）的 **上采样**、**位深**。
 5. 点 **开始**，等到各行状态完成即可。
 
-Supported inputs include common formats ffmpeg can decode (WAV / FLAC / MP3 / M4A / …). Outputs are WAV.
+Supported inputs include common formats ffmpeg can decode (WAV / FLAC / MP3 / M4A / …). Exports keep the source container when possible (FLAC→FLAC, M4A→ALAC/M4A, …), copy tags/cover/lyrics from the source, and use the same file name in another folder (`_dsee` suffix only when writing beside the source). Lossy formats that cannot hold hi-res rates (e.g. MP3 @ 88.2 kHz+) fall back to FLAC.
 
-输入为 ffmpeg 能解的常见格式；输出为 WAV。
+输入为 ffmpeg 能解的常见格式。导出尽量保持源容器（FLAC→FLAC、M4A→ALAC 等），并复制标签/封面/歌词；输出到其他目录时文件名与源一致，仅在与源同目录时加 `_dsee` 后缀。无法承载高采样率的有损格式（如 88.2 kHz+ 的 MP3）会回退为 FLAC。
 
 ---
 
