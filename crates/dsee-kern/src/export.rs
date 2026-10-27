@@ -30,12 +30,12 @@ fn source_ext(input: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-/// Extension for the export file. Hi-res rates force FLAC when the source
+/// Extension for the export file. Hi-res rates force WAV when the source
 /// codec family cannot carry >48 kHz (MP3/AAC/Ogg/Opus/WMA).
 pub fn export_extension(input: &Path, output_rate: i32) -> String {
     let ext = source_ext(input);
     match ext.as_str() {
-        "mp3" | "aac" | "ogg" | "opus" | "wma" if output_rate > 48_000 => "flac".into(),
+        "mp3" | "aac" | "ogg" | "opus" | "wma" if output_rate > 48_000 => "wav".into(),
         "wave" => "wav".into(),
         "aif" => "aiff".into(),
         other => other.into(),
@@ -205,18 +205,14 @@ pub fn finalize_export(
                 "copy".into(),
             ]);
         }
-        // Fallback: FLAC (should not happen if export_extension matched).
+        // Fallback: WAV (should not happen if export_extension matched).
         _ => {
-            args.extend([
-                "-c:a".into(),
-                "flac".into(),
-                "-sample_fmt".into(),
-                flac_sample_fmt(output_bits).into(),
-                "-c:v".into(),
-                "copy".into(),
-                "-disposition:v".into(),
-                "attached_pic".into(),
-            ]);
+            let codec = match output_bits.trim() {
+                "16" => "pcm_s16le",
+                "32" => "pcm_s32le",
+                _ => "pcm_s24le",
+            };
+            args.extend(["-c:a".into(), codec.into(), "-c:v".into(), "copy".into()]);
         }
     }
 
@@ -320,12 +316,12 @@ fn finalize_export_audio_only(
             ]);
         }
         _ => {
-            args.extend([
-                "-c:a".into(),
-                "flac".into(),
-                "-sample_fmt".into(),
-                flac_sample_fmt(output_bits).into(),
-            ]);
+            let codec = match output_bits.trim() {
+                "16" => "pcm_s16le",
+                "32" => "pcm_s32le",
+                _ => "pcm_s24le",
+            };
+            args.extend(["-c:a".into(), codec.into()]);
         }
     }
     args.push(dest.display().to_string());
@@ -350,10 +346,10 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn hi_res_mp3_becomes_flac() {
+    fn hi_res_mp3_becomes_wav() {
         assert_eq!(
             export_extension(Path::new(r"C:\a\song.mp3"), 176_400),
-            "flac"
+            "wav"
         );
         assert_eq!(export_extension(Path::new(r"C:\a\song.mp3"), 48_000), "mp3");
         assert_eq!(
