@@ -86,7 +86,15 @@ fn sample_fmt_for_bits(bits: &str) -> &'static str {
     match bits.trim() {
         "16" => "s16",
         "32" => "s32",
-        _ => "s32", // 24-bit packed in container; flac/alac use s32 internally often
+        _ => "s32", // 24-bit packed in container; flac uses s32
+    }
+}
+
+/// ffmpeg `alac` only accepts planar layouts (`s16p` / `s32p`).
+fn alac_sample_fmt(bits: &str) -> &'static str {
+    match bits.trim() {
+        "16" => "s16p",
+        _ => "s32p",
     }
 }
 
@@ -168,17 +176,20 @@ pub fn finalize_export(
             args.extend(["-c:a".into(), codec.into(), "-c:v".into(), "copy".into()]);
         }
         "m4a" | "mp4" | "alac" => {
-            // Hi-res → ALAC; ≤48k keep AAC if source was lossy m4a (still OK as ALAC).
+            // Hi-res / lossless m4a → ALAC (planar sample formats only).
             args.extend([
                 "-c:a".into(),
                 "alac".into(),
                 "-sample_fmt".into(),
-                sample_fmt_for_bits(output_bits).into(),
+                alac_sample_fmt(output_bits).into(),
                 "-c:v".into(),
                 "copy".into(),
                 "-disposition:v".into(),
                 "attached_pic".into(),
             ]);
+            if output_bits.trim() == "24" {
+                args.extend(["-bits_per_raw_sample".into(), "24".into()]);
+            }
         }
         "mp3" if output_rate <= 48_000 => {
             args.extend([
@@ -300,8 +311,11 @@ fn finalize_export_audio_only(
                 "-c:a".into(),
                 "alac".into(),
                 "-sample_fmt".into(),
-                sample_fmt_for_bits(output_bits).into(),
+                alac_sample_fmt(output_bits).into(),
             ]);
+            if output_bits.trim() == "24" {
+                args.extend(["-bits_per_raw_sample".into(), "24".into()]);
+            }
         }
         "mp3" if output_rate <= 48_000 => {
             args.extend([
